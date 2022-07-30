@@ -8,16 +8,17 @@ import argparse
 import sys
 from copy import deepcopy
 from pathlib import Path
+from torch import nn
+import torch
+import logging
 
 FILE = Path(__file__).absolute()
 sys.path.append(FILE.parents[1].as_posix())  # add yolov5/ to path
 
-from models.common import *
-from models.experimental import *
-from test.utils import check_anchor_order
-from test.utils import make_divisible, check_file, set_logging
-from test.utils.plots import feature_visualization
-from test.utils.torch_utils import time_sync, fuse_conv_and_bn, model_info, scale_img, initialize_weights, \
+from plate_locator.utils.autoanchor import check_anchor_order
+from plate_locator.utils.general import make_divisible, check_file, set_logging
+from plate_locator.utils.plots import feature_visualization
+from plate_locator.utils.torch_utils import time_sync, fuse_conv_and_bn, model_info, scale_img, initialize_weights, \
     select_device, copy_attr
 
 try:

@@ -13,10 +13,10 @@ import torch.nn as nn
 from PIL import Image
 from torch.cuda import amp
 
-from test.utils import exif_transpose, letterbox
-from test.utils import non_max_suppression, make_divisible, scale_coords, increment_path, xyxy2xywh, save_one_box
-from test.utils.plots import colors, plot_one_box
-from test.utils.torch_utils import time_sync
+from plate_locator.utils.dataloaders import exif_transpose, letterbox
+from plate_locator.utils.general import non_max_suppression, make_divisible, scale_coords, increment_path, xyxy2xywh
+from plate_locator.utils.plots import colors, save_one_box, plot_one_box
+from plate_locator.utils.torch_utils import time_sync
 
 LOGGER = logging.getLogger(__name__)
 
