@@ -24,7 +24,7 @@ class PlateLocator:
     def __init__(self, weights_path, device='cuda:0', iou_thres=0.25, conf_thres=0.25, max_det=1000):
         self.models = attempt_load(weights_path, device)
         self.stride = int(self.models.stride.max())
-        print(self.stride)
+        # print(self.stride)
         self.device = device
         self.iou_thres = iou_thres
         self.conf_thres = conf_thres
