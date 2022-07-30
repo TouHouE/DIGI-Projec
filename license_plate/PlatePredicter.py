@@ -4,17 +4,17 @@ from PIL import Image
 import numpy as np
 CTC_DECODER_TYPE = ['bestPath', 'beamSearch']
 
+
 class PlatePredictor:
     def __init__(self, weights_path: str, ctc_decoder_type: str=CTC_DECODER_TYPE[0]):
         self.lpr = alpr.AutoLPR(decoder=ctc_decoder_type, normalise=False)
         self.lpr.load(crnn_path=weights_path)
 
-    def predict(self, image) -> str:
+    def predict(self, image: np.ndarray) -> str:
         if isinstance(image, np.ndarray):
             image = Image.fromarray(image)
 
         return self.lpr.predict(image)
-
 
 
 if __name__ == '__main__':
