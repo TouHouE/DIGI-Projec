@@ -1,10 +1,10 @@
 import numpy as np
 import torch
 
-from models.experimental import attempt_load
-from test.utils import non_max_suppression, \
+from plate_locator.models.experimental import attempt_load
+from plate_locator.utils.general import non_max_suppression, \
     scale_coords
-from test.utils import letterbox
+from plate_locator.utils.augmentations import letterbox
 
 
 def preprocess(image, stride) -> torch.Tensor:
