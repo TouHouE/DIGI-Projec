@@ -40,5 +40,10 @@ class PlateLocator:
         for index in range(len(predictions)):
             det = predictions[index]
             det[:, :4] = scale_coords(resize_img[2:], det[:, :4], org_shape).round()
+
+            det[:, 0] = det[:, 0] - 10
+            det[:, 1] = det[:, 1] - 10
+            det[:, 2] = det[:, 2] + 10
+            det[:, 3] = det[:, 3] + 10
             predictions[index] = det
         return predictions
