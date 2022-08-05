@@ -54,6 +54,7 @@ class SheetsController:
             base64_image = vehicle_info[3]
             owner = vehicle_info[4]
             tmp = Vehicle.Vehicle(plate_serials, park_in_time, base64_image, leave_park_time is None, leave_park_time, owner)
+            print(tmp)
             vehicle_list.append(tmp)
         return vehicle_list
 

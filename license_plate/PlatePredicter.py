@@ -24,4 +24,4 @@ if __name__ == '__main__':
     img = Image.fromarray(img)
     ans = p.predict(img)
 
-    print(ans)
+

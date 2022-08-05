@@ -1,5 +1,6 @@
 import base64
 
+
 class Vehicle:
     def __init__(self, plate_serial, parking_time, plate_image, parking=True, leave_time=None, owner=''):
         self.plate_serial = plate_serial
@@ -33,7 +34,7 @@ class Vehicle:
         return len(intersection_set) > 0
 
 
-def make_vehicle(plate_serials: dict, parking_time, plate_image, top_n_accuracy=3, create_threshold=100) -> Vehicle:
+def make_vehicle(plate_serials: dict, parking_time, plate_image, owner_map, top_n_accuracy=3, create_threshold=100) -> Vehicle:
     """
     This method is used to create a Vehicle object and do some preprocessing.
     :param plate_serials:
@@ -46,4 +47,10 @@ def make_vehicle(plate_serials: dict, parking_time, plate_image, top_n_accuracy=
     if sum(plate_serials.values()) < create_threshold:
         return None
     sorted_plate = [plate for _, plate in sorted(zip(plate_serials.values(), plate_serials.keys()))]
-    return Vehicle(sorted_plate[-1 * top_n_accuracy:], parking_time, plate_image)
+    top_n_plate = sorted_plate[-1 * top_n_accuracy:]
+    # set = set(top_n_plate)
+    for user_name, plate_serial in owner_map.items():
+        if plate_serial in top_n_plate:
+            return Vehicle(top_n_plate, parking_time, plate_image, owner=user_name)
+
+    return None

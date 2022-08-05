@@ -6,8 +6,12 @@ import cv2
 import datetime as dt
 import numpy as np
 from typing import List, Union
-
+from utils import global_var_initializer as initializer
+from utils import MessageProducer as MP
+from line import LineNotifyPoster
 ALL_CAR = []
+USER2PLATE = None
+USER2TOKEN = None
 
 LOCATOR = None
 PREDICTOR = None
@@ -15,6 +19,7 @@ TEST_MODE = None
 WEBCAM = None
 SHEET_CONTROLLER = None
 
+PARKING_PAY_RATE = 5  # the parking pay rate is 5 NTD per minute
 FACTORY_TIME = 10
 BLOCK_TIME = 1
 THINKS = 3
@@ -38,13 +43,21 @@ def put_text_on_img(img, word, xyxy):
 
 
 # TODO add more action when vehicle into park
-def into_park_action(vehicle: Vehicle.Vehicle):
-    SHEET_CONTROLLER.add_vehicle_record(vehicle)
-
+def into_park_action(vehicle: Vehicle.Vehicle, method: str = 'append'):
+    if method == 'append':
+        SHEET_CONTROLLER.add_vehicle_record(vehicle)
+    elif method == 'update':
+        SHEET_CONTROLLER.update_vehicle(vehicle)
 
 # TODO add more action when vehicle leave park
 def leave_park_action(vehicle: Vehicle.Vehicle):
     SHEET_CONTROLLER.update_vehicle(vehicle)
+    parking_time = (vehicle.leave_time - vehicle.in_park_time)
+    total_cost = PARKING_PAY_RATE * (parking_time.total_seconds() // 60)
+    LineNotifyPoster.post_message(
+        line_token=USER2TOKEN[vehicle.owner],
+        message=MP.line_leave_park_message(vehicle.owner, vehicle.in_park_time, vehicle.leave_time, total_cost)
+    )
 
 
 def check_parking(vehicle_to_be_confirmed: Vehicle.Vehicle):
@@ -138,7 +151,7 @@ def found_plate(start_time, init_results, init_new_img=None):
 
             if keyboard_input & 0xff == ord('q'):
                 break
-    check_parking(Vehicle.make_vehicle(all_prob, start_time, new_img))
+    check_parking(Vehicle.make_vehicle(all_prob, start_time, new_img, owner_map=USER2PLATE))
 
 
 def main_loop():
@@ -152,11 +165,15 @@ def main_loop():
         # print(results)
         has_results = results is not None and len(results) > 0
 
+        # Because of the accuracy, we need more sample to do statistics.
+        # We also need to separate the detection times for each vehicle to avoid confusing which plate belongs
+        # to which vehicle.
         if has_results and not just_record:
             found_plate(dt.datetime.now(), results, new_img)
-            just_record = True
+            just_record = True  # setting detection was stopped
             block_from = dt.datetime.now()
 
+        # When detection block time is
         if just_record and (dt.datetime.now() - block_from).seconds > BLOCK_TIME:
             just_record = False
             print(f'Current car: {[car.__str__() for car in ALL_CAR]}')
@@ -189,8 +206,10 @@ def update_seats_number():
 
 
 def init():
-    global PREDICTOR, LOCATOR, TEST_MODE, WEBCAM, SHEET_CONTROLLER
+    global PREDICTOR, LOCATOR, TEST_MODE, WEBCAM, SHEET_CONTROLLER, USER2PLATE, USER2TOKEN
     print(f'Start Initial\n{"=" * 15}')
+    USER2PLATE = initializer.init_user2plate()
+    USER2TOKEN = initializer.init_user2token()
     print('Now initial plate serials predictor...')
     PREDICTOR = pp.PlatePredictor(weights_path='./static/weights/char_predictor/best.pth')
     print(f'plate serials predictor initial done!')
