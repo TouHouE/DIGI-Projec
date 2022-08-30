@@ -1,15 +1,17 @@
 from license_plate import PlatePredicter as pp
 from plate_locator import PlateLocator as pl
 from zoo import Vehicle
-from google import SheetsController
+import json
 import cv2
 import datetime as dt
 import numpy as np
 from typing import List, Union
-from utils import global_var_initializer as initializer
+from utils import global_const as C
+from utils import SheetsController
 from utils import MessageProducer as MP
 from line import LineNotifyPoster
-ALL_CAR = []
+
+
 USER2PLATE = None
 USER2TOKEN = None
 
@@ -18,46 +20,94 @@ PREDICTOR = None
 TEST_MODE = None
 WEBCAM = None
 SHEET_CONTROLLER = None
+WEBSITE_UPDATER = None
 
-PARKING_PAY_RATE = 5  # the parking pay rate is 5 NTD per minute
-FACTORY_TIME = 10
-BLOCK_TIME = 1
-THINKS = 3
-NUM_OF_VEHICLE_SEATS = 3
-COLOR = [255, 128, 50]
-current_seats = 0
+# C.PARKING_PAY_RATE = 5  # the parking pay rate is 5 NTD per minute
+# C.FACTORY_TIME = 10
+# C.BLOCK_TIME = 1
+# C.BBX_THICKNESS = 3
+# C.MAX_OF_VEHICLE_SEATS = 3
+# C.COLOR = [255, 128, 50]
+
+global_vehicle_record = []
+global_current_space = 0
+
+
+def update_website(alert: bool = False):
+    try:
+        import websocket
+        ws = websocket.create_connection(f'ws://{C.CURRENT_IP}:9001')
+        # print('already create connection')
+        ws.send(json.dumps({
+            'data': global_current_space,
+            'color': 'red' if global_current_space == 3 else 'lime',
+            'is_alert': alert
+        }))
+    except Exception as e:
+        pass
 
 
 def put_text_on_img(img, word, xyxy):
     # draw vertical line
-    img[xyxy[1]: xyxy[1] + THINKS, xyxy[0]:xyxy[2]] = COLOR
-    img[xyxy[3]: xyxy[3] + THINKS, xyxy[0]:xyxy[2]] = COLOR
+    img[xyxy[1]: xyxy[1] + C.BBX_THICKNESS, xyxy[0]:xyxy[2]] = C.COLOR
+    img[xyxy[3]: xyxy[3] + C.BBX_THICKNESS, xyxy[0]:xyxy[2]] = C.COLOR
 
     # draw horizontal line
-    img[xyxy[1]: xyxy[3], xyxy[0]: xyxy[0] + THINKS] = COLOR
-    img[xyxy[1]: xyxy[3], xyxy[2]: xyxy[2] + THINKS] = COLOR
+    img[xyxy[1]: xyxy[3], xyxy[0]: xyxy[0] + C.BBX_THICKNESS] = C.COLOR
+    img[xyxy[1]: xyxy[3], xyxy[2]: xyxy[2] + C.BBX_THICKNESS] = C.COLOR
 
     # put plate serial on
-    img = cv2.putText(img, word, (xyxy[0], xyxy[1] - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, COLOR, THINKS, cv2.LINE_AA)
+    img = cv2.putText(img, word, (xyxy[0], xyxy[1] - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, C.COLOR, C.BBX_THICKNESS, cv2.LINE_AA)
     return img
 
 
 # TODO add more action when vehicle into park
 def into_park_action(vehicle: Vehicle.Vehicle, method: str = 'append'):
+    # update data to Google sheets
     if method == 'append':
         SHEET_CONTROLLER.add_vehicle_record(vehicle)
     elif method == 'update':
         SHEET_CONTROLLER.update_vehicle(vehicle)
 
+    update_website()
+
+
 # TODO add more action when vehicle leave park
 def leave_park_action(vehicle: Vehicle.Vehicle):
-    SHEET_CONTROLLER.update_vehicle(vehicle)
+    """
+        This method is used to implement all the actions of the system when the vehicle leaves the parking lot
+    :param vehicle:
+    :return: None
+    """
+    SHEET_CONTROLLER.update_vehicle(vehicle)    # update new info on Google sheets
     parking_time = (vehicle.leave_time - vehicle.in_park_time)
-    total_cost = PARKING_PAY_RATE * (parking_time.total_seconds() // 60)
-    LineNotifyPoster.post_message(
-        line_token=USER2TOKEN[vehicle.owner],
-        message=MP.line_leave_park_message(vehicle.owner, vehicle.in_park_time, vehicle.leave_time, total_cost)
-    )
+    total_cost = C.get_parking_cost(parking_time.total_seconds())
+
+    if vehicle.owner != '':
+        # If we know the vehicle's owner into this statement.
+        # calculate parking fee
+        try:
+            message = MP.line_leave_park_message(vehicle.owner, vehicle.in_park_time, vehicle.leave_time, total_cost)
+            LineNotifyPoster.post_message(
+                line_token=USER2TOKEN[vehicle.owner],
+                message=message
+            )
+            print(f'Message:{message}')
+        except KeyError as ke:
+            print(f'Oops your line token has\'t been recorded!')
+    else:
+        print(MP.line_leave_park_message('Stranger', vehicle.in_park_time, vehicle.leave_time, total_cost, isStranger=True))
+    update_website()
+
+
+def no_more_space_action(vehicle: Vehicle.Vehicle):
+    """
+        This method is used to implement all the actions of the system when there are no more seats in the parking lot
+    :param vehicle:
+    :return:
+    """
+    update_website(True)
+    # pass
 
 
 def check_parking(vehicle_to_be_confirmed: Vehicle.Vehicle):
@@ -65,41 +115,51 @@ def check_parking(vehicle_to_be_confirmed: Vehicle.Vehicle):
     :param vehicle_to_be_confirmed:
     :return:
     """
-    global current_seats
+    global global_current_space
+    is_leave = False
+    is_update = False
 
-    # if make_vehicle fails, this statement will escape this method
+    # if `make_vehicle fails`, this statement will escape this method
     if vehicle_to_be_confirmed is None:
         return None
 
-    # this part for leave park
-    for index, car in enumerate(ALL_CAR):
+    # this statement for check current vehicle is leave or into parking lot.
+    for index, car in enumerate(global_vehicle_record):
+        is_leave = vehicle_to_be_confirmed == car and global_vehicle_record[index].parking
+        is_update = vehicle_to_be_confirmed == car and not global_vehicle_record[index].parking
 
-        if vehicle_to_be_confirmed == car:
-            if ALL_CAR[index].parking:
-                # Adding `leave_time` and change `parking`
-                ALL_CAR[index].parking = False
-                ALL_CAR[index].leave_time = vehicle_to_be_confirmed.in_park_time
+        if is_leave:
+            # Adding `leave_time` and change `parking`
+            # Updating locally data
+            global_vehicle_record[index].parking = False
+            global_vehicle_record[index].leave_time = vehicle_to_be_confirmed.in_park_time
 
-                # show info
-                print(f'car: {ALL_CAR[index]}\n| was leaved')
-                update_seats_number()
-                # into method of leave park
-                leave_park_action(ALL_CAR[index])
-                return None
-            else:
-                ALL_CAR[index].parking = True
-                ALL_CAR[index].leave_time = None
-                print(f'wellcome: {ALL_CAR[index]}')
+            # show info
+            print(f'car: {global_vehicle_record[index]}\n was leaved')
+            update_number_of_space()
 
+            # into method of leave parking lot
+            leave_park_action(global_vehicle_record[index])
+            return None
 
-    # check the park is full or not
-    if current_seats < NUM_OF_VEHICLE_SEATS:
-        ALL_CAR.append(vehicle_to_be_confirmed)
-        update_seats_number()
-        into_park_action(vehicle_to_be_confirmed)
+    # check the parking lot is full or not
+    if global_current_space < C.MAX_OF_VEHICLE_SPACE:
+
+        # check is first time into parking lot or not
+        if is_update:
+            global_vehicle_record[index].parking = True
+            global_vehicle_record[index].leave_time = None
+            update_number_of_space()
+            print(f'wellcome: \n{vehicle_to_be_confirmed}')
+            into_park_action(vehicle_to_be_confirmed, method='update')
+        else:
+            print(f'First time: \n{vehicle_to_be_confirmed}')
+            global_vehicle_record.append(vehicle_to_be_confirmed)
+            update_number_of_space()
+            into_park_action(vehicle_to_be_confirmed)
     else:
-        print(f'There are no seats in the park')
-
+        print(f'There are no more space in the parking lot')
+        no_more_space_action(vehicle_to_be_confirmed)
 
 def predict_plate_word(img: str, bbx) -> Union[List[Union[List[str], np.ndarray]], None]:
     """
@@ -117,7 +177,7 @@ def predict_plate_word(img: str, bbx) -> Union[List[Union[List[str], np.ndarray]
         tmp_img = img.copy() # prepare for TEST_MODE
 
         for *xyxy, conf, cls in reversed(bbx):
-            xyxy = [int(coor.item()) for coor in xyxy]
+            xyxy = [int(coor.item()) if coor >= 0 else 0 for coor in xyxy]
             crops = img[xyxy[1]:xyxy[3], xyxy[0]:xyxy[2]]
 
             plate_str = PREDICTOR.predict(crops)
@@ -173,23 +233,22 @@ def main_loop():
             just_record = True  # setting detection was stopped
             block_from = dt.datetime.now()
 
-        # When detection block time is
-        if just_record and (dt.datetime.now() - block_from).seconds > BLOCK_TIME:
+        if just_record and (dt.datetime.now() - block_from).seconds > C.BLOCK_TIME:
             just_record = False
-            print(f'Current car: {[car.__str__() for car in ALL_CAR]}')
-            in_park = list(filter(lambda x: x.parking, ALL_CAR))
-            was_leaved = list(filter(lambda x: not x.parking, ALL_CAR))
+            # print(f'Current car: {[str(car) for car in ALL_CAR]}')
+            in_park = list(filter(lambda x: x.parking, global_vehicle_record))
+            was_leaved = list(filter(lambda x: not x.parking, global_vehicle_record))
 
-            print(f'Vehicles in park: ')
-            for v in in_park:
-                print(v)
-
-            print(f'Vehicles was leaved: ')
-            for v in was_leaved:
-                print(v)
+            #
+            # print(f'Vehicles in park: ')
+            # for v in in_park:
+            #     print(v)
+            #
+            # print(f'Vehicles was leaved: ')
+            # for v in was_leaved:
+            #     print(v)
 
         if TEST_MODE:
-        # cv2.imshow('Webcam 0', image)
             cv2.imshow('Webcam 0', new_img)
             keyboard_input = cv2.waitKey(1)
 
@@ -197,19 +256,23 @@ def main_loop():
                 break
 
 
-def update_seats_number():
-    global current_seats
-    current_seats = 0
+def update_number_of_space():
+    global global_current_space
+    global_current_space = 0
 
-    for v in ALL_CAR:
-        current_seats += v.parking
+    for v in global_vehicle_record:
+        global_current_space += v.parking  # int + bool
 
 
 def init():
-    global PREDICTOR, LOCATOR, TEST_MODE, WEBCAM, SHEET_CONTROLLER, USER2PLATE, USER2TOKEN
+    """
+        Initial all global variable in this method.
+    :return: None
+    """
+    global PREDICTOR, LOCATOR, TEST_MODE, WEBCAM, SHEET_CONTROLLER, USER2PLATE, USER2TOKEN, WEBSITE_UPDATER
     print(f'Start Initial\n{"=" * 15}')
-    USER2PLATE = initializer.init_user2plate()
-    USER2TOKEN = initializer.init_user2token()
+    USER2PLATE = C.init_user2plate()
+    USER2TOKEN = C.init_user2token()
     print('Now initial plate serials predictor...')
     PREDICTOR = pp.PlatePredictor(weights_path='./static/weights/char_predictor/best.pth')
     print(f'plate serials predictor initial done!')
@@ -222,26 +285,37 @@ def init():
     print(f'Start reloading...')
     reload_ALL_CAR()
     print(f'Reload is done')
-    show_all_park()
+    show_parkinglot_record()
     activate_test_mode = input('Test Mode?(y/N)')
     TEST_MODE = (activate_test_mode == 'y') or (activate_test_mode == 'Y')
     WEBCAM = cv2.VideoCapture(0)
-    print('All init are done')
+    print(f'All init are done\n{"=" * 15}\n')
 
 
 def reload_ALL_CAR():
-    global ALL_CAR
-    ALL_CAR = SHEET_CONTROLLER.get_whole_sheet()
-    print(len(ALL_CAR))
-    update_seats_number()
+    """
+        loading all vehicle record from Google sheets
+    :return:
+    """
+    global global_vehicle_record
+    global_vehicle_record = SHEET_CONTROLLER.get_whole_sheet()
+    print(f'All number of vehicle in record is {len(global_vehicle_record)}')
+    update_number_of_space()
+    print(f'Number of vehicle in parking right now is: {global_current_space}')
+    update_website()
 
 
-def show_all_park():
-    in_park = list(filter(lambda x: x.parking, ALL_CAR))
-    print('=' * 20)
+def show_parkinglot_record():
+    in_park = list(filter(lambda x: x.parking, global_vehicle_record))
+    leave_part = list(filter(lambda x: not x.parking, global_vehicle_record))
+
+    print(f'{"=" * 20}In the parking lot{"=" * 20}')
     for vehicle_in_park in in_park:
         print(vehicle_in_park)
-    print('=' * 20)
+    print(f'{"=" * 20}Has left the parking lot{"=" * 20}')
+    for v in leave_part:
+        print(v)
+
 
 
 if __name__ == '__main__':

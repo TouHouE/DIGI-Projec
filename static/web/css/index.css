@@ -1,0 +1,45 @@
+html, body {
+    height: 100%;
+    width: 100%;
+}
+
+#horizontal-container {
+    display: table;
+    height: 100%;
+    width: 100%;
+    background-color: bisque;
+
+}
+.info-viewer-unit {
+    display: table-cell;
+
+}
+.info-label {
+    font-size: 50px;
+}
+.info-viewer {
+    display: table;
+    width: 50%;
+    height: 30%;
+    border-radius: 5%;
+    border-style: double;
+    text-align: center;
+    vertical-align: middle;
+
+    font-size: 50px;
+}
+
+#number_of_current_vehicle {
+    background-color: lime;
+
+}
+
+#maximum_of_vehicle {
+    background-color: red;
+}
+
+.text-vertical-middle {
+    display: table-cell;
+    vertical-align: middle;
+    text-align: center;
+}

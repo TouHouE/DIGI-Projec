@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Park Dashboard</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js">
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js" integrity="sha384-7EyYLQZgWBi67fBtVxw60/OWl1kjsfrPFcaU0pp0nAh+i8FD068QogUvg85Ewy1k" crossorigin="anonymous"></script>
+    <script src="static/web/js/index.js"></script>
+
+</head>
+<body>
+
+<div id="horizontal-container">
+
+    <div class="info-viewer-unit">
+        <div class="info-label">Number of current vehicle</div>
+        <div class="info-viewer" id="number_of_current_vehicle">
+            <span class="text-vertical-middle", id="num-current-vehicle-text">1</span>
+        </div>
+    </div>
+
+    <div class="info-viewer-unit">
+        <div class="info-label">The maximum of vehicle</div>
+        <div class="info-viewer" id="maximum_of_vehicle">
+            <span class="text-vertical-middle">3</span>
+        </div>
+    </div>
+</div>
+<link rel="stylesheet" href="web/css/index.css">
+</body>
+</html>

@@ -11,5 +11,6 @@ def post_message(line_token: str, message: str) -> int:
     payload = {
         'message': message,
     }
+
     rep = requests.post('https://notify-api.line.me/api/notify', headers=headers, params=payload)
     return rep.status_code
